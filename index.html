@@ -1,0 +1,105 @@
+<script>
+    let vocabularyDB = []; // Ban đầu để trống để đợi tải file
+    let learnedWords = JSON.parse(localStorage.getItem('learnedWords')) || [];
+    let currentSessionWords = [];
+    let currentIndex = 0;
+
+    // HÀM QUAN TRỌNG: Tải dữ liệu từ file JSON ngoài
+    async function loadVocabulary() {
+        try {
+            document.getElementById('stats').innerText = "Đang tải dữ liệu từ file JSON...";
+            
+            const response = await fetch('vocab_data.json');
+            if (!response.ok) {
+                throw new Error('Không thể tải file vocab_data.json. Hãy kiểm tra lại tên file.');
+            }
+            
+            vocabularyDB = await response.json();
+            
+            // Sau khi tải xong mới bắt đầu phiên học
+            startNewSession();
+            
+        } catch (error) {
+            console.error("Lỗi:", error);
+            document.getElementById('stats').innerHTML = `<b style="color:red;">Lỗi: ${error.message}</b><br>Lưu ý: Bạn cần chạy qua Live Server (VS Code) hoặc Hosting để trình duyệt cho phép đọc file JSON.`;
+        }
+    }
+
+    function startNewSession() {
+        if (vocabularyDB.length === 0) return;
+
+        const unlearned = vocabularyDB.filter(item => !learnedWords.includes(item.word));
+        
+        if (unlearned.length === 0 && vocabularyDB.length > 0) {
+            alert("Bạn đã học hết sạch từ vựng trong danh sách! Hệ thống sẽ reset lại.");
+            resetData();
+            return;
+        }
+
+        currentSessionWords = unlearned.sort(() => 0.5 - Math.random()).slice(0, 10);
+        currentIndex = 0;
+        
+        document.getElementById('complete-area').style.display = 'none';
+        document.getElementById('game-area').style.display = 'block';
+        updateStats();
+        showCard();
+    }
+
+    function showCard() {
+        const card = document.getElementById('card');
+        card.classList.remove('is-flipped');
+        
+        const wordData = currentSessionWords[currentIndex];
+        document.getElementById('f-word').innerText = wordData.word;
+        document.getElementById('f-ipa').innerText = wordData.ipa;
+        document.getElementById('f-type').innerText = wordData.type;
+        document.getElementById('f-meaning').innerText = wordData.meaning;
+        document.getElementById('f-example').innerText = `Ví dụ: ${wordData.example}`;
+    }
+
+    function flipCard() {
+        document.getElementById('card').classList.toggle('is-flipped');
+    }
+
+    function nextCard() {
+        currentIndex++;
+        if (currentIndex < currentSessionWords.length) {
+            showCard();
+        } else {
+            endSession();
+        }
+        updateStats();
+    }
+
+    function markAsLearned() {
+        const word = currentSessionWords[currentIndex].word;
+        if (!learnedWords.includes(word)) {
+            learnedWords.push(word);
+            localStorage.setItem('learnedWords', JSON.stringify(learnedWords));
+        }
+        nextCard();
+    }
+
+    function endSession() {
+        document.getElementById('game-area').style.display = 'none';
+        document.getElementById('complete-area').style.display = 'block';
+    }
+
+    function updateStats() {
+        const total = vocabularyDB.length;
+        const learned = learnedWords.length;
+        const remainingInSession = currentSessionWords.length - currentIndex;
+        document.getElementById('stats').innerText = `Đã thuộc: ${learned}/${total} từ | Lượt này còn: ${remainingInSession} từ`;
+    }
+
+    function resetData() {
+        if(confirm("Bạn có chắc chắn muốn xóa hết lịch sử đã học không?")) {
+            localStorage.removeItem('learnedWords');
+            learnedWords = [];
+            location.reload();
+        }
+    }
+
+    // CHẠY HÀM TẢI FILE KHI TRANG WEB VỪA MỞ
+    loadVocabulary();
+</script>

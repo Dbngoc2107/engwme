@@ -1,139 +1,149 @@
-<script>
-    // 1. Khai báo biến toàn cục
-    let vocabularyDB = []; 
-    let learnedWords = JSON.parse(localStorage.getItem('learnedWords')) || [];
-    let currentSessionWords = [];
-    let currentIndex = 0;
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flashcards Học Tiếng Anh</title>
+    <style>
+        :root { --primary: #4a90e2; --secondary: #f39c12; --success: #2ecc71; --bg: #f4f7f6; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 600px; width: 100%; text-align: center; }
+        .stats { margin-bottom: 20px; color: #666; font-weight: bold; }
+        .card-container { perspective: 1000px; width: 100%; height: 350px; cursor: pointer; margin-bottom: 20px; }
+        .card { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 15px; }
+        .card.is-flipped { transform: rotateY(180deg); }
+        .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; border-radius: 15px; background: white; }
+        .card-back { transform: rotateY(180deg); border: 2px solid var(--primary); }
+        .word { font-size: 2.5em; font-weight: bold; color: var(--primary); margin: 0; }
+        .ipa { font-size: 1.2em; color: #7f8c8d; margin: 5px 0; }
+        .type { background: #eee; padding: 3px 10px; border-radius: 20px; font-size: 0.8em; margin-bottom: 15px; }
+        .meaning { font-size: 1.3em; color: #2c3e50; margin-bottom: 15px; }
+        .example { font-style: italic; color: #555; border-left: 3px solid var(--secondary); padding-left: 10px; text-align: left; }
+        .controls { display: flex; gap: 10px; justify-content: center; }
+        button { padding: 12px 25px; border: none; border-radius: 5px; cursor: pointer; transition: 0.3s; }
+        .btn-next { background: var(--primary); color: white; }
+        .btn-done { background: var(--success); color: white; }
+        .btn-reset { background: #e74c3c; color: white; margin-top: 20px; }
+    </style>
+</head>
+<body>
 
-    // 2. Hàm tải dữ liệu từ file JSON ngoài
-    async function loadVocabulary() {
-        try {
-            const statsElement = document.getElementById('stats');
-            if (statsElement) {
-                statsElement.innerText = "Đang tải dữ liệu từ file JSON...";
-            }
-            
-            const response = await fetch('vocab_data.json');
-            if (!response.ok) {
-                throw new Error('Không thể tải file vocab_data.json. Hãy kiểm tra lại tên file.');
-            }
-            
-            const rawData = await response.json();
-            
-            // CHUYỂN ĐỔI: Biến Object (0: {}, 1: {}) thành Mảng ([{}, {}])
-            vocabularyDB = Object.values(rawData);
-            
-            // Sau khi tải xong dữ liệu mới bắt đầu phiên học
-            startNewSession();
-            
-        } catch (error) {
-            console.error("Lỗi tải dữ liệu:", error);
-            const statsElement = document.getElementById('stats');
-            if (statsElement) {
-                statsElement.innerHTML = `
-                    <b style="color:red;">Lỗi: ${error.message}</b><br>
-                    <small>Lưu ý: Bạn cần chạy qua Live Server (VS Code) hoặc GitHub Pages để trình duyệt cho phép đọc file JSON.</small>
-                `;
+    <div class="container">
+        <h1>English Flashcards</h1>
+        <!-- CÁC THÀNH PHẦN QUAN TRỌNG PHẢI CÓ ID ĐÚNG -->
+        <div class="stats" id="stats">Đang khởi tạo...</div>
+
+        <div id="game-area" style="display:none;">
+            <div class="card-container" onclick="flipCard()">
+                <div class="card" id="card">
+                    <div class="card-face card-front">
+                        <div class="type" id="f-type">loại từ</div>
+                        <div class="word" id="f-word">Từ vựng</div>
+                        <div class="ipa" id="f-ipa">/ipa/</div>
+                    </div>
+                    <div class="card-face card-back">
+                        <div class="meaning" id="f-meaning">Định nghĩa</div>
+                        <div class="example" id="f-example">Ví dụ</div>
+                    </div>
+                </div>
+            </div>
+            <div class="controls">
+                <button class="btn-next" onclick="nextCard()">Bỏ qua</button>
+                <button class="btn-done" onclick="markAsLearned()">Đã thuộc</button>
+            </div>
+        </div>
+
+        <div id="complete-area" style="display:none;">
+            <h2>Hoàn thành!</h2>
+            <button class="btn-next" onclick="startNewSession()">Học tiếp 10 từ mới</button>
+        </div>
+
+        <button class="btn-reset" onclick="resetData()">Xóa lịch sử học tập</button>
+    </div>
+
+    <script>
+        let vocabularyDB = []; 
+        let learnedWords = JSON.parse(localStorage.getItem('learnedWords')) || [];
+        let currentSessionWords = [];
+        let currentIndex = 0;
+
+        async function loadVocabulary() {
+            try {
+                const response = await fetch('vocab_data.json');
+                if (!response.ok) throw new Error('Không tìm thấy file vocab_data.json');
+                
+                const rawData = await response.json();
+                // Chuyển Object thành mảng
+                vocabularyDB = Object.values(rawData); 
+                
+                startNewSession();
+            } catch (error) {
+                document.getElementById('stats').innerHTML = `<span style="color:red">Lỗi: ${error.message}</span>`;
             }
         }
-    }
 
-    // 3. Hàm bắt đầu phiên học 10 từ mới
-    function startNewSession() {
-        if (vocabularyDB.length === 0) return;
-
-        // Lọc các từ chưa thuộc
-        const unlearned = vocabularyDB.filter(item => !learnedWords.includes(item.word));
-        
-        if (unlearned.length === 0 && vocabularyDB.length > 0) {
-            alert("Chúc mừng! Bạn đã thuộc toàn bộ từ vựng. Hệ thống sẽ reset lại từ đầu.");
-            resetData(true); // Tự động reset không cần hỏi nếu đã hết từ
-            return;
-        }
-
-        // Lấy ngẫu nhiên 10 từ từ danh sách chưa học
-        currentSessionWords = unlearned.sort(() => 0.5 - Math.random()).slice(0, 10);
-        currentIndex = 0;
-        
-        document.getElementById('complete-area').style.display = 'none';
-        document.getElementById('game-area').style.display = 'block';
-        
-        updateStats();
-        showCard();
-    }
-
-    // 4. Hàm hiển thị dữ liệu lên Flashcard
-    function showCard() {
-        const card = document.getElementById('card');
-        if (card) card.classList.remove('is-flipped');
-        
-        const wordData = currentSessionWords[currentIndex];
-        
-        // Cập nhật các trường thông tin khớp với file JSON mới của bạn
-        setText('f-word', wordData.word);
-        setText('f-ipa', wordData.phon_br || wordData.phon_n_am || ""); // Ưu tiên giọng Anh (br)
-        setText('f-type', wordData.type);
-        setText('f-meaning', wordData.definition); // definition thay cho meaning
-        setText('f-example', `Ví dụ: ${wordData.example}`);
-    }
-
-    // Hàm phụ trợ để gán text an toàn (tránh lỗi null)
-    function setText(id, value) {
-        const el = document.getElementById(id);
-        if (el) el.innerText = value;
-    }
-
-    // 5. Các hàm điều khiển (Lật, Tiếp theo, Đã học)
-    function flipCard() {
-        const card = document.getElementById('card');
-        if (card) card.classList.toggle('is-flipped');
-    }
-
-    function nextCard() {
-        currentIndex++;
-        if (currentIndex < currentSessionWords.length) {
+        function startNewSession() {
+            const unlearned = vocabularyDB.filter(item => !learnedWords.includes(item.word));
+            if (unlearned.length === 0 && vocabularyDB.length > 0) {
+                alert("Bạn đã học hết từ vựng!");
+                resetData(true);
+                return;
+            }
+            currentSessionWords = unlearned.sort(() => 0.5 - Math.random()).slice(0, 10);
+            currentIndex = 0;
+            document.getElementById('complete-area').style.display = 'none';
+            document.getElementById('game-area').style.display = 'block';
+            updateStats();
             showCard();
-        } else {
-            endSession();
         }
-        updateStats();
-    }
 
-    function markAsLearned() {
-        const word = currentSessionWords[currentIndex].word;
-        if (!learnedWords.includes(word)) {
-            learnedWords.push(word);
-            localStorage.setItem('learnedWords', JSON.stringify(learnedWords));
+        function showCard() {
+            const wordData = currentSessionWords[currentIndex];
+            document.getElementById('card').classList.remove('is-flipped');
+            // Gán dữ liệu khớp với file Source 2 của bạn[cite: 2]
+            document.getElementById('f-word').innerText = wordData.word;
+            document.getElementById('f-ipa').innerText = wordData.phon_br || wordData.phon_n_am || "";
+            document.getElementById('f-type').innerText = wordData.type;
+            document.getElementById('f-meaning').innerText = wordData.definition;
+            document.getElementById('f-example').innerText = "Ví dụ: " + (wordData.example || "Không có");
         }
-        nextCard();
-    }
 
-    function endSession() {
-        document.getElementById('game-area').style.display = 'none';
-        document.getElementById('complete-area').style.display = 'block';
-    }
+        function flipCard() { document.getElementById('card').classList.toggle('is-flipped'); }
 
-    // 6. Cập nhật thống kê
-    function updateStats() {
-        const total = vocabularyDB.length;
-        const learned = learnedWords.length;
-        const remainingInSession = currentSessionWords.length - currentIndex;
-        
-        const statsElement = document.getElementById('stats');
-        if (statsElement) {
-            statsElement.innerText = `Đã thuộc: ${learned}/${total} từ | Lượt này còn: ${remainingInSession} từ`;
+        function nextCard() {
+            currentIndex++;
+            if (currentIndex < currentSessionWords.length) { showCard(); } 
+            else { 
+                document.getElementById('game-area').style.display = 'none';
+                document.getElementById('complete-area').style.display = 'block';
+            }
+            updateStats();
         }
-    }
 
-    // 7. Reset dữ liệu
-    function resetData(silent = false) {
-        if (silent || confirm("Bạn có chắc chắn muốn xóa hết lịch sử đã học không?")) {
-            localStorage.removeItem('learnedWords');
-            learnedWords = [];
-            location.reload();
+        function markAsLearned() {
+            const word = currentSessionWords[currentIndex].word;
+            if (!learnedWords.includes(word)) {
+                learnedWords.push(word);
+                localStorage.setItem('learnedWords', JSON.stringify(learnedWords));
+            }
+            nextCard();
         }
-    }
 
-    // KHỞI CHẠY KHI TRANG WEB VỪA MỞ
-    window.onload = loadVocabulary;
-</script>
+        function updateStats() {
+            const learned = learnedWords.length;
+            const total = vocabularyDB.length;
+            document.getElementById('stats').innerText = `Đã thuộc: ${learned}/${total} từ | Còn lại: ${currentSessionWords.length - currentIndex} từ`;
+        }
+
+        function resetData(auto = false) {
+            if (auto || confirm("Xóa hết lịch sử học?")) {
+                localStorage.removeItem('learnedWords');
+                location.reload();
+            }
+        }
+
+        // Chạy sau khi trang web đã tải xong toàn bộ HTML
+        window.onload = loadVocabulary;
+    </script>
+</body>
+</html>
